@@ -89,13 +89,22 @@ export interface StatusEntry {
 /**
  * statusFromCwd read from `-z` output, so every name arrives as git holds it: no
  * C-quoting to undo and no ` -> ` to split. Pathspecs are literal, since a file
- * name can hold `[` or `*`.
+ * name can hold `[` or `*`. Rename detection is pinned on and copy detection off,
+ * whatever the user's config: `from` is always a source the change removed.
  */
 export async function statusEntriesFromCwd(
     git: GitRunner,
     args: string[]
 ): Promise<{entries: StatusEntry[]; exitCode: number}> {
-    const r = await git(['--literal-pathspecs', 'status', '--porcelain', '-z', ...args])
+    const r = await git([
+        '-c',
+        'status.renames=true',
+        '--literal-pathspecs',
+        'status',
+        '--porcelain',
+        '-z',
+        ...args
+    ])
     if (r.exitCode !== 0) return {entries: [], exitCode: r.exitCode}
     const fields = r.stdout.split('\0')
     const entries: StatusEntry[] = []

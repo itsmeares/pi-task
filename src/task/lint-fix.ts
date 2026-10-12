@@ -398,7 +398,11 @@ export async function runBoundedLintFix(deps: LintFixDeps): Promise<LintFixResul
         if (postFrozenDirty !== null) {
             const frozenViolations = [...postFrozenDirty].filter(f => !preFrozenDirty.has(f))
             if (frozenViolations.length > 0) {
-                const reverted = await revertFrozenPaths(frozenViolations, deps.git)
+                const reverted = await revertFrozenPaths(
+                    frozenViolations,
+                    deps.git,
+                    snapshot ?? 'HEAD'
+                )
                 deps.log?.(
                     `lint-fix FROZEN-PATH GUARD — ${frozenViolations.slice(0, 3).join(', ')}`
                 )

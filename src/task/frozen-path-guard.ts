@@ -72,6 +72,15 @@ export function pathNamedIn(text: string, path: string): boolean {
 /** Status codes of a conflicted file. A checkout from HEAD would end its conflict. */
 const UNMERGED = /^(DD|AU|UD|UA|DU|AA|UU)$/
 
+/** The sources of the renames that added these files, wherever they sit. */
+async function renameSourcesOf(added: string[], git: FrozenGit): Promise<string[]> {
+    if (added.length === 0) return []
+    // Status scoped to the destination reports an added file, not a rename.
+    const {entries} = await statusEntriesFromCwd(git, ['--untracked-files=no'])
+    const wanted = new Set(added)
+    return entries.flatMap(e => (e.from !== undefined && wanted.has(e.path) ? [e.from] : []))
+}
+
 /**
  * Restore the spec-frozen paths to their committed (HEAD) state, undoing any
  * change a just-run write-capable gate child made to them, and return the list of
@@ -85,7 +94,8 @@ const UNMERGED = /^(DD|AU|UD|UA|DU|AA|UU)$/
  * HEAD lacks, staged or intent-to-add; `git clean -fdq` removes untracked files the
  * pass created. Both are scoped to the frozen pathspec, except a rename's source:
  * it can sit outside it, and restoring the rename without it would leave the
- * source deleted.
+ * source deleted. Its working copy comes from `base`, the tree before the pass,
+ * since HEAD lacks any uncommitted work in it.
  *
  * Run against a real repo with one frozen directory and one free one: a modified
  * file came back to its HEAD content, a deleted file came back, and two untracked
@@ -98,7 +108,11 @@ const UNMERGED = /^(DD|AU|UD|UA|DU|AA|UU)$/
  * empty result — the guard must never break the gate on a project it cannot reason
  * about.
  */
-export async function revertFrozenPaths(paths: string[], git: FrozenGit): Promise<string[]> {
+export async function revertFrozenPaths(
+    paths: string[],
+    git: FrozenGit,
+    base = 'HEAD'
+): Promise<string[]> {
     if (paths.length === 0) return []
     const {entries, exitCode} = await statusEntriesFromCwd(git, ['--', ...paths])
     if (exitCode !== 0 || entries.length === 0) return []
@@ -110,21 +124,11 @@ export async function revertFrozenPaths(paths: string[], git: FrozenGit): Promis
             .filter(e => e.code !== '??')
             .flatMap(e => (e.from === undefined ? [e.path] : [e.path, e.from]))
     )
-    // An added file here can be the DESTINATION of a rename whose source sits
-    // outside `paths`: status scoped to the destination cannot pair the two, and
-    // a checkout of the destination alone would leave the source deleted. Only an
-    // UNSCOPED probe sees the pair; `-- .` would not, from a subdirectory cwd.
-    if (settled.some(e => e.code.startsWith('A') && e.from === undefined)) {
-        const {entries: whole} = await statusEntriesFromCwd(git, [])
-        const renamedFrom = new Map(
-            whole.filter(e => e.from !== undefined).map(e => [e.path, e.from])
-        )
-        for (const e of settled) {
-            if (!e.code.startsWith('A') || e.from !== undefined) continue
-            const from = renamedFrom.get(e.path)
-            if (from !== undefined) tracked.add(from)
-        }
-    }
+    const sources = await renameSourcesOf(
+        settled.filter(e => e.code.includes('A') && e.from === undefined).map(e => e.path),
+        git
+    )
+    for (const source of sources) tracked.add(source)
     const restored =
         tracked.size === 0
         || (
@@ -138,6 +142,15 @@ export async function revertFrozenPaths(paths: string[], git: FrozenGit): Promis
                 ...tracked
             ])
         ).exitCode === 0
+    if (restored && base !== 'HEAD' && sources.length > 0)
+        await git([
+            '--literal-pathspecs',
+            'restore',
+            `--source=${base}`,
+            '--worktree',
+            '--',
+            ...sources
+        ])
     await git(['--literal-pathspecs', 'clean', '-fdq', '--', ...paths])
     const reverted = settled.filter(e => restored || e.code === '??')
     return [...new Set(reverted.map(e => e.path))]

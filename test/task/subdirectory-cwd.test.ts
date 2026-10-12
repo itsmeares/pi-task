@@ -591,6 +591,70 @@ test('the lint-fix frozen guard undoes a rename whose source sits outside the fr
     expect(g('status', '--porcelain')).toBe('')
 })
 
+test('the lint-fix frozen guard undoes an intent-to-add rename into a frozen path', async () => {
+    const {dir, app, g} = repo()
+    fs.mkdirSync(path.join(app, 'frozen'))
+    fs.writeFileSync(path.join(dir, 'outside.ts'), 'export const o = 1\n')
+    g('add', '-A')
+    g('commit', '-q', '-m', 'outside')
+    const r = await lintFixIn(app, ['frozen'], () => {
+        fs.renameSync(path.join(dir, 'outside.ts'), path.join(app, 'frozen', 'b.ts'))
+        g('add', '-N', 'app/frozen/b.ts')
+    })
+    expect(r.class).toBe('frozen-path')
+    expect(fs.readFileSync(path.join(dir, 'outside.ts'), 'utf8')).toBe('export const o = 1\n')
+    expect(fs.existsSync(path.join(app, 'frozen', 'b.ts'))).toBe(false)
+    expect(g('status', '--porcelain')).toBe('')
+})
+
+// lint-fix runs on uncommitted task work, so HEAD is not the source's state before the child.
+test('the lint-fix frozen guard keeps the task edit of a file renamed into a frozen path', async () => {
+    const {dir, app, g} = repo()
+    fs.mkdirSync(path.join(app, 'frozen'))
+    fs.writeFileSync(path.join(dir, 'outside.ts'), 'export const o = 1\n')
+    g('add', '-A')
+    g('commit', '-q', '-m', 'outside')
+    fs.writeFileSync(path.join(dir, 'outside.ts'), 'export const o = 2\n')
+    const r = await lintFixIn(app, ['frozen'], () => g('mv', 'outside.ts', 'app/frozen/b.ts'))
+    expect(r.class).toBe('frozen-path')
+    expect(fs.readFileSync(path.join(dir, 'outside.ts'), 'utf8')).toBe('export const o = 2\n')
+    expect(fs.existsSync(path.join(app, 'frozen', 'b.ts'))).toBe(false)
+})
+
+test('the lint-fix frozen guard pairs a rename when the user turned rename detection off', async () => {
+    const {dir, app, g} = repo()
+    g('config', 'status.renames', 'false')
+    fs.mkdirSync(path.join(app, 'frozen'))
+    fs.writeFileSync(path.join(dir, 'outside.ts'), 'export const o = 1\n')
+    g('add', '-A')
+    g('commit', '-q', '-m', 'outside')
+    const r = await lintFixIn(app, ['frozen'], () => g('mv', 'outside.ts', 'app/frozen/b.ts'))
+    expect(r.class).toBe('frozen-path')
+    expect(fs.readFileSync(path.join(dir, 'outside.ts'), 'utf8')).toBe('export const o = 1\n')
+    expect(g('status', '--porcelain')).toBe('')
+})
+
+// A copy's source still exists, so checking it out from HEAD discards its own edit.
+test('the lint-fix frozen guard leaves the edited source of a copy into a frozen path alone', async () => {
+    const {dir, app, g} = repo()
+    g('config', 'status.renames', 'copies')
+    const body = Array.from({length: 40}, (_, i) => `export const v${i} = ${i}\n`).join('')
+    fs.mkdirSync(path.join(app, 'frozen'))
+    fs.writeFileSync(path.join(dir, 'outside.ts'), body)
+    g('add', '-A')
+    g('commit', '-q', '-m', 'outside')
+    fs.appendFileSync(path.join(dir, 'outside.ts'), 'export const task = 1\n')
+    const r = await lintFixIn(app, ['frozen'], () => {
+        fs.copyFileSync(path.join(dir, 'outside.ts'), path.join(app, 'frozen', 'b.ts'))
+        g('add', '-A')
+    })
+    expect(r.class).toBe('frozen-path')
+    expect(fs.existsSync(path.join(app, 'frozen', 'b.ts'))).toBe(false)
+    expect(fs.readFileSync(path.join(dir, 'outside.ts'), 'utf8')).toBe(
+        `${body}export const task = 1\n`
+    )
+})
+
 // A cancel or a lock can stop the drop between its two steps.
 test('a drop whose second step fails puts the first one back', async () => {
     const {app, g} = repo()

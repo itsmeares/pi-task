@@ -61,7 +61,16 @@ describe('revertFrozenPaths (fake git)', () => {
         // Only the status probe ran: revertFrozenPaths returns before it reaches
         // checkout/clean when status names no changed file.
         expect(calls).toEqual([
-            ['--literal-pathspecs', 'status', '--porcelain', '-z', '--', 'src/server/index.ts']
+            [
+                '-c',
+                'status.renames=true',
+                '--literal-pathspecs',
+                'status',
+                '--porcelain',
+                '-z',
+                '--',
+                'src/server/index.ts'
+            ]
         ])
     })
 
@@ -75,7 +84,16 @@ describe('revertFrozenPaths (fake git)', () => {
         const reverted = await revertFrozenPaths(['src/server/index.ts'], git)
         expect(reverted).toEqual(['src/server/index.ts'])
         expect(calls).toEqual([
-            ['--literal-pathspecs', 'status', '--porcelain', '-z', '--', 'src/server/index.ts'],
+            [
+                '-c',
+                'status.renames=true',
+                '--literal-pathspecs',
+                'status',
+                '--porcelain',
+                '-z',
+                '--',
+                'src/server/index.ts'
+            ],
             ['rev-parse', '--show-prefix'],
             [
                 '--literal-pathspecs',
