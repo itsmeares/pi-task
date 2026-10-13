@@ -655,6 +655,29 @@ test('the lint-fix frozen guard leaves the edited source of a copy into a frozen
     )
 })
 
+// A user's copy-detection config must not turn a copy into a rename in the guard's eye:
+// the status.renames pin leaves the destination a plain add, so its surviving source
+// stays out of the revert.
+test('the lint-fix frozen guard spares a copy source under user diff.copies', async () => {
+    const {dir, app, g} = repo()
+    g('config', 'diff.copies', 'true')
+    const body = Array.from({length: 40}, (_, i) => `export const v${i} = ${i}\n`).join('')
+    fs.mkdirSync(path.join(app, 'frozen'))
+    fs.writeFileSync(path.join(dir, 'outside.ts'), body)
+    g('add', '-A')
+    g('commit', '-q', '-m', 'outside')
+    const r = await lintFixIn(app, ['frozen'], () => {
+        fs.appendFileSync(path.join(dir, 'outside.ts'), 'export const child = 1\n')
+        fs.copyFileSync(path.join(dir, 'outside.ts'), path.join(app, 'frozen', 'b.ts'))
+        g('add', '-A')
+    })
+    expect(r.class).toBe('frozen-path')
+    expect(fs.existsSync(path.join(app, 'frozen', 'b.ts'))).toBe(false)
+    expect(fs.readFileSync(path.join(dir, 'outside.ts'), 'utf8')).toBe(
+        `${body}export const child = 1\n`
+    )
+})
+
 // A cancel or a lock can stop the drop between its two steps.
 test('a drop whose second step fails puts the first one back', async () => {
     const {app, g} = repo()
