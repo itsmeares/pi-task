@@ -79,7 +79,7 @@ export async function statusFromCwd(
     return {...r, stdout: lines.join('\n')}
 }
 
-/** One `git status --porcelain` entry named from the cwd. `from` is a rename or copy's source. */
+/** One `git status --porcelain` entry named from the cwd. `from` is a rename's source. */
 export interface StatusEntry {
     code: string
     path: string
@@ -89,8 +89,9 @@ export interface StatusEntry {
 /**
  * statusFromCwd read from `-z` output, so every name arrives as git holds it: no
  * C-quoting to undo and no ` -> ` to split. Pathspecs are literal, since a file
- * name can hold `[` or `*`. Rename detection is pinned on and copy detection off,
- * whatever the user's config: `from` is always a source the change removed.
+ * name can hold `[` or `*`. Rename detection is pinned on, unlimited, and copy
+ * detection off, whatever the user's config: `from` is always a source the change
+ * removed.
  */
 export async function statusEntriesFromCwd(
     git: GitRunner,
@@ -99,6 +100,8 @@ export async function statusEntriesFromCwd(
     const r = await git([
         '-c',
         'status.renames=true',
+        '-c',
+        'status.renameLimit=0',
         '--literal-pathspecs',
         'status',
         '--porcelain',

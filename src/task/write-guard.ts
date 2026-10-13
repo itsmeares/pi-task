@@ -50,7 +50,8 @@ function splitEntry(raw: string): {x: string; y: string; from: string; to: strin
 
 /**
  * Parse `git status --porcelain` output into the change summary. A rename entry
- * contributes its source to `deleted` and its target to `added`. An unstaged child
+ * contributes its source to `deleted` and its target to `added`; a copy, which a
+ * user's `status.renames=copies` turns on, only its target. An unstaged child
  * edit shows the same reality as separate ` D old` + `A  new` (or `?? new`) lines,
  * and both shapes produce the identical summary — which is what lets the
  * relocation allowance below read either one. Deterministic and pure, so it is
@@ -68,8 +69,12 @@ export function parseTreeChanges(porcelain: string): TreeChangeSummary {
             added.add(e.to)
             continue
         }
-        if (e.x === 'R' || e.y === 'R' || e.x === 'C') {
+        if (e.x === 'R' || e.y === 'R') {
             deleted.add(e.from)
+            added.add(e.to)
+            continue
+        }
+        if (e.x === 'C') {
             added.add(e.to)
             continue
         }

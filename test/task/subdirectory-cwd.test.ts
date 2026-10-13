@@ -77,6 +77,19 @@ test('the tree changes name the edited file from cwd', async () => {
     expect((await collectTreeChanges(app)).modified).toEqual(['a.ts'])
 })
 
+test('the tree changes do not count a copy source as deleted under user copy detection', async () => {
+    const {app, g} = repo()
+    g('config', 'diff.renames', 'copies')
+    const body = Array.from({length: 40}, (_, i) => `export const v${i} = ${i}\n`).join('')
+    fs.writeFileSync(path.join(app, 'a.ts'), body)
+    g('add', '-A')
+    g('commit', '-q', '-m', 'body')
+    fs.appendFileSync(path.join(app, 'a.ts'), 'export const child = 1\n')
+    fs.copyFileSync(path.join(app, 'a.ts'), path.join(app, 'b.ts'))
+    g('add', '-A')
+    expect((await collectTreeChanges(app)).deleted).toEqual([])
+})
+
 test('the committed fallback names the file from cwd', async () => {
     const {app, g} = repo()
     fs.writeFileSync(path.join(app, 'a.ts'), 'export const a = 2\n')
@@ -658,9 +671,9 @@ test('the lint-fix frozen guard leaves the edited source of a copy into a frozen
 // A user's copy-detection config must not turn a copy into a rename in the guard's eye:
 // the status.renames pin leaves the destination a plain add, so its surviving source
 // stays out of the revert.
-test('the lint-fix frozen guard spares a copy source under user diff.copies', async () => {
+test('the lint-fix frozen guard spares a copy source under user diff.renames=copies', async () => {
     const {dir, app, g} = repo()
-    g('config', 'diff.copies', 'true')
+    g('config', 'diff.renames', 'copies')
     const body = Array.from({length: 40}, (_, i) => `export const v${i} = ${i}\n`).join('')
     fs.mkdirSync(path.join(app, 'frozen'))
     fs.writeFileSync(path.join(dir, 'outside.ts'), body)
@@ -676,6 +689,28 @@ test('the lint-fix frozen guard spares a copy source under user diff.copies', as
     expect(fs.readFileSync(path.join(dir, 'outside.ts'), 'utf8')).toBe(
         `${body}export const child = 1\n`
     )
+})
+
+// Past the rename limit git stops pairing inexact renames, and every source would stay deleted.
+test('the lint-fix frozen guard pairs renames past a user rename limit', async () => {
+    const {dir, app, g} = repo()
+    g('config', 'diff.renameLimit', '1')
+    const body = Array.from({length: 40}, (_, i) => `export const v${i} = ${i}\n`).join('')
+    fs.mkdirSync(path.join(app, 'frozen'))
+    for (const n of ['x', 'y', 'z']) fs.writeFileSync(path.join(dir, `${n}.ts`), `${body}// ${n}\n`)
+    g('add', '-A')
+    g('commit', '-q', '-m', 'outside')
+    const r = await lintFixIn(app, ['frozen'], () => {
+        for (const n of ['x', 'y', 'z']) {
+            g('mv', `${n}.ts`, `app/frozen/moved-${n}.ts`)
+            fs.appendFileSync(path.join(app, 'frozen', `moved-${n}.ts`), '// child\n')
+        }
+        g('add', '-A')
+    })
+    expect(r.class).toBe('frozen-path')
+    for (const n of ['x', 'y', 'z'])
+        expect(fs.readFileSync(path.join(dir, `${n}.ts`), 'utf8')).toBe(`${body}// ${n}\n`)
+    expect(g('status', '--porcelain')).toBe('')
 })
 
 // A cancel or a lock can stop the drop between its two steps.

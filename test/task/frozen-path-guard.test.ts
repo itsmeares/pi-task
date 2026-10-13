@@ -64,6 +64,8 @@ describe('revertFrozenPaths (fake git)', () => {
             [
                 '-c',
                 'status.renames=true',
+                '-c',
+                'status.renameLimit=0',
                 '--literal-pathspecs',
                 'status',
                 '--porcelain',
@@ -87,6 +89,8 @@ describe('revertFrozenPaths (fake git)', () => {
             [
                 '-c',
                 'status.renames=true',
+                '-c',
+                'status.renameLimit=0',
                 '--literal-pathspecs',
                 'status',
                 '--porcelain',

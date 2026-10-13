@@ -389,8 +389,9 @@ export async function runBoundedLintFix(deps: LintFixDeps): Promise<LintFixResul
     // FROZEN-PATH GUARD: a frozen path that was clean pre-child and is changed now
     // is the child's edit — the exact write verify's rule-4b prohibition probe
     // fails the TASK for. Revert JUST those paths (they were clean, so HEAD ==
-    // pre-state: no work can be lost) and report not-applied so the caller falls
-    // through to the ordinary recommend → AUTOFIX/ACCEPT picker. Inconclusive git
+    // pre-state; a rename source outside them comes back from the snapshot) and
+    // report not-applied so the caller falls through to the ordinary recommend →
+    // AUTOFIX/ACCEPT picker. Inconclusive git
     // (either side) → guard steps aside; the verify probe still catches what
     // survives.
     if (preFrozenDirty !== null) {

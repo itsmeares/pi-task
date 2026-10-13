@@ -86,9 +86,9 @@ async function renameSourcesOf(added: string[], git: FrozenGit): Promise<string[
  * change a just-run write-capable gate child made to them, and return the list of
  * files that had to be reverted (empty ⇒ the pass respected every frozen path).
  *
- * Runs AFTER the task's own work is committed (HEAD), so "restore to HEAD" keeps
- * the verified task's version of the frozen file and discards ONLY the gate
- * child's edit on top of it — the task's own frozen-path edits, if any, are a
+ * The gate runs it AFTER the task's own work is committed (HEAD), so "restore to
+ * HEAD" keeps the verified task's version of the frozen file and discards ONLY the
+ * gate child's edit on top of it — the task's own frozen-path edits, if any, are a
  * separate concern the verify prohibition probe surfaces. `git checkout -f HEAD`
  * with `--no-overlay` restores every changed file git tracks and removes the ones
  * HEAD lacks, staged or intent-to-add; `git clean -fdq` removes untracked files the

@@ -41,6 +41,12 @@ describe('parseTreeChanges', () => {
         expect(s.modified).toEqual([])
     })
 
+    test('a copy contributes only its target, since its source survives', () => {
+        const s = parseTreeChanges('C  src/app.test.ts -> e2e/app.test.ts')
+        expect(s.deleted).toEqual([])
+        expect(s.added).toEqual(['e2e/app.test.ts'])
+    })
+
     test('quoted paths are unquoted; blank/short lines are ignored', () => {
         const s = parseTreeChanges('?? "src/with space.ts"\n\n D')
         expect(s.added).toEqual(['src/with space.ts'])
