@@ -58,13 +58,22 @@ export function makeGit(cwd: string, signal?: AbortSignal, spawnFn?: SpawnFn): G
 /**
  * `git status --porcelain` with every path named from the cwd, as `ls-files`,
  * pathspecs and the diff family's `--relative` name them. Porcelain names them
- * from the repo root, whatever the cwd, and has no flag to change that.
+ * from the repo root, whatever the cwd, and has no flag to change that. Copy
+ * detection is pinned off, whatever the user's config.
  */
 export async function statusFromCwd(
     git: GitRunner,
     args: string[]
 ): Promise<{stdout: string; exitCode: number}> {
-    const r = await git(['-c', 'core.quotePath=false', 'status', '--porcelain', ...args])
+    const r = await git([
+        '-c',
+        'core.quotePath=false',
+        '-c',
+        'status.renames=true',
+        'status',
+        '--porcelain',
+        ...args
+    ])
     if (r.exitCode !== 0 || r.stdout.length === 0) return r
     const prefix = revParsePrefix((await git(['rev-parse', '--show-prefix'])).stdout)
     if (prefix.length === 0) return r

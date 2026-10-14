@@ -87,7 +87,36 @@ test('the tree changes do not count a copy source as deleted under user copy det
     fs.appendFileSync(path.join(app, 'a.ts'), 'export const child = 1\n')
     fs.copyFileSync(path.join(app, 'a.ts'), path.join(app, 'b.ts'))
     g('add', '-A')
-    expect((await collectTreeChanges(app)).deleted).toEqual([])
+    expect(g('status', '--porcelain')).toContain('C  app/a.ts -> app/b.ts')
+    expect(await collectTreeChanges(app)).toEqual({
+        modified: ['a.ts'],
+        deleted: [],
+        added: ['b.ts']
+    })
+})
+
+test('statusFromCwd reports no copy under user copy detection', async () => {
+    const {app, g} = repo()
+    g('config', 'status.renames', 'copies')
+    const body = Array.from({length: 40}, (_, i) => `export const v${i} = ${i}\n`).join('')
+    fs.writeFileSync(path.join(app, 'a.ts'), body)
+    g('add', '-A')
+    g('commit', '-q', '-m', 'body')
+    fs.appendFileSync(path.join(app, 'a.ts'), 'export const child = 1\n')
+    fs.copyFileSync(path.join(app, 'a.ts'), path.join(app, 'b.ts'))
+    g('add', '-N', 'app/b.ts')
+    expect(g('status', '--porcelain')).toContain(' C app/a.ts -> app/b.ts')
+    const r = await statusFromCwd(makeGit(app), ['--', '.'])
+    expect(r.stdout.split('\n').filter(Boolean).sort()).toEqual([' A b.ts', ' M a.ts'])
+})
+
+test('the tree changes count a renamed file the child then removed as deleted', async () => {
+    const {app, g} = repo()
+    fs.mkdirSync(path.join(app, 'tmp'))
+    g('mv', 'app/a.ts', 'app/tmp/a.ts')
+    fs.rmSync(path.join(app, 'tmp', 'a.ts'))
+    expect(g('status', '--porcelain')).toContain('RD app/a.ts -> app/tmp/a.ts')
+    expect(await collectTreeChanges(app)).toEqual({modified: [], deleted: ['a.ts'], added: []})
 })
 
 test('the committed fallback names the file from cwd', async () => {

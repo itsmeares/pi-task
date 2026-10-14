@@ -47,6 +47,37 @@ describe('parseTreeChanges', () => {
         expect(s.added).toEqual(['e2e/app.test.ts'])
     })
 
+    // Measured: `git mv a b && rm b` prints `RD a -> b`. Y is the worktree, so b is gone.
+    test('a rename or copy whose target the worktree lost adds nothing', () => {
+        expect(parseTreeChanges('RD src/a.test.ts -> tmp/a.test.ts')).toEqual({
+            modified: [],
+            deleted: ['src/a.test.ts'],
+            added: []
+        })
+        expect(parseTreeChanges('CD src/a.ts -> tmp/a.ts')).toEqual({
+            modified: [],
+            deleted: [],
+            added: []
+        })
+    })
+
+    test('a staged add the worktree lost was never a tracked file', () => {
+        expect(parseTreeChanges('AD tmp/scratch.ts')).toEqual({
+            modified: [],
+            deleted: [],
+            added: []
+        })
+    })
+
+    // Measured: a copy then `git add -N` prints ` C a.ts -> d.ts` under status.renames=copies.
+    test('a worktree copy adds its target', () => {
+        expect(parseTreeChanges(' C a.ts -> d.ts')).toEqual({
+            modified: [],
+            deleted: [],
+            added: ['d.ts']
+        })
+    })
+
     test('quoted paths are unquoted; blank/short lines are ignored', () => {
         const s = parseTreeChanges('?? "src/with space.ts"\n\n D')
         expect(s.added).toEqual(['src/with space.ts'])
@@ -68,6 +99,11 @@ describe('findForbiddenDeletions', () => {
         // Unstaged relocation shows as a delete + an untracked add, not a rename.
         const s = parseTreeChanges(' D src/app.spec.ts\n?? e2e/app.spec.ts')
         expect(findForbiddenDeletions(s)).toEqual([])
+    })
+
+    test('a rename to a target then removed is a deletion, not a relocation', () => {
+        const s = parseTreeChanges('RD src/a.test.ts -> tmp/a.test.ts')
+        expect(findForbiddenDeletions(s)).toEqual(['src/a.test.ts'])
     })
 
     test('a staged rename is likewise allowed', () => {
