@@ -34,7 +34,7 @@ import {readOwnedRequirements} from '../../src/task/requirements.js'
 import type {CommitResult} from '../../src/task/auto-commit.js'
 import * as fsp from 'node:fs/promises'
 import * as path from 'node:path'
-import {existsSync} from 'node:fs'
+import {existsSync, readFileSync} from 'node:fs'
 import {spawnSync} from 'node:child_process'
 import type {FixContext} from '../../src/task/fix-context.js'
 
@@ -4171,14 +4171,25 @@ test('buildStepFence: a health-repair entry carries the health fence, not the ro
  * spliced between them, and 0034 starts on the repaired tree.
  */
 const MX5_TASKS = path.join(process.env.HOME ?? '', 'hub', 'mx5-n', '.pi-tasks')
+// The fixture is a live project: once TASK_0034 re-runs and passes, its gate trail
+// overwrites the recorded blame this replay asserts on, so the harness must skip
+// rather than fail when the fixture is no longer in its recorded state.
+const mx5Task34Raw =
+    (
+        existsSync(path.join(MX5_TASKS, 'TASK_0033.md'))
+        && existsSync(path.join(MX5_TASKS, 'TASK_0034.md'))
+    ) ?
+        readFileSync(path.join(MX5_TASKS, 'TASK_0034.md'), 'utf8')
+    :   null
 const mx5Present =
-    existsSync(path.join(MX5_TASKS, 'TASK_0033.md'))
-    && existsSync(path.join(MX5_TASKS, 'TASK_0034.md'))
+    mx5Task34Raw !== null
+    && mx5Task34Raw.includes('verify: FAIL — repo health: `bun run lint` exited 1')
+    && mx5Task34Raw.includes('every finding in src/client/api.ts')
 
 test.skipIf(!mx5Present)(
     'replay mx5-n TASK_0033 → TASK_0034: 0034 is never blamed; a repair for src/client/api.ts sits between them',
     async () => {
-        const t34 = await fsp.readFile(path.join(MX5_TASKS, 'TASK_0034.md'), 'utf8')
+        const t34 = mx5Task34Raw!
         const titleOf = (raw: string): string => /^title: (.+)$/m.exec(raw)?.[1]?.trim() ?? ''
         const title34 = titleOf(t34)
         const title33 = 'Implement `src/client/api.ts` — typed `hc<AppType>` client'
