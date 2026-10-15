@@ -4171,9 +4171,7 @@ test('buildStepFence: a health-repair entry carries the health fence, not the ro
  * spliced between them, and 0034 starts on the repaired tree.
  */
 const MX5_TASKS = path.join(process.env.HOME ?? '', 'hub', 'mx5-n', '.pi-tasks')
-// The fixture is a live project: once TASK_0034 re-runs and passes, its gate trail
-// overwrites the recorded blame this replay asserts on, so the harness must skip
-// rather than fail when the fixture is no longer in its recorded state.
+// The fixture is live: a green TASK_0034 re-run overwrites the recorded blame, so skip, don't fail.
 const mx5Task34Raw =
     (
         existsSync(path.join(MX5_TASKS, 'TASK_0033.md'))
