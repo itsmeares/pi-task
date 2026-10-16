@@ -34,7 +34,7 @@ import {readOwnedRequirements} from '../../src/task/requirements.js'
 import type {CommitResult} from '../../src/task/auto-commit.js'
 import * as fsp from 'node:fs/promises'
 import * as path from 'node:path'
-import {existsSync, readFileSync} from 'node:fs'
+import {existsSync} from 'node:fs'
 import {spawnSync} from 'node:child_process'
 import type {FixContext} from '../../src/task/fix-context.js'
 
@@ -4165,63 +4165,40 @@ test('buildStepFence: a health-repair entry carries the health fence, not the ro
 })
 
 /**
- * REPLAY of run mx5-n (read-only fixture): TASK_0033 left `src/client/api.ts`
+ * REPLAY of run mx5-n (AUTO_0002, 2026-09-16): TASK_0033 left `src/client/api.ts`
  * red and unfinished; TASK_0034 was the next task to start and got blamed. Under
  * the checkpoint flow the red is seen before 0034 runs, a repair for the file is
  * spliced between them, and 0034 starts on the repaired tree.
  */
-const MX5_TASKS = path.join(process.env.HOME ?? '', 'hub', 'mx5-n', '.pi-tasks')
-// The fixture is live: a green TASK_0034 re-run overwrites the recorded blame, so skip, don't fail.
-const mx5Task34Raw =
-    (
-        existsSync(path.join(MX5_TASKS, 'TASK_0033.md'))
-        && existsSync(path.join(MX5_TASKS, 'TASK_0034.md'))
-    ) ?
-        readFileSync(path.join(MX5_TASKS, 'TASK_0034.md'), 'utf8')
-    :   null
-const mx5Present =
-    mx5Task34Raw !== null
-    && mx5Task34Raw.includes('verify: FAIL — repo health: `bun run lint` exited 1')
-    && mx5Task34Raw.includes('every finding in src/client/api.ts')
-
-test.skipIf(!mx5Present)(
-    'replay mx5-n TASK_0033 → TASK_0034: 0034 is never blamed; a repair for src/client/api.ts sits between them',
-    async () => {
-        const t34 = mx5Task34Raw!
-        const titleOf = (raw: string): string => /^title: (.+)$/m.exec(raw)?.[1]?.trim() ?? ''
-        const title34 = titleOf(t34)
-        const title33 = 'Implement `src/client/api.ts` — typed `hc<AppType>` client'
-        expect(title34.length).toBeGreaterThan(0)
-        // What the fixture's own gate trail says the red was.
-        expect(t34).toContain('verify: FAIL — repo health: `bun run lint` exited 1')
-        expect(t34).toContain('every finding in src/client/api.ts')
-        await withTmpTaskDir(async dir => {
-            const {ctx} = makeFakeCtx(dir)
-            await writeTaskFile(
-                dir,
-                autoFm('TASK_AUTO_0002'),
-                buildAutoBody('feat', '(none)', [title33, title34])
-            )
-            const {deps, ran, trail, ids} = healthRun({
-                // 0033 ships the red unfinished; the repair clears it.
-                red: title =>
-                    title === title33 ? true
-                    : title.startsWith('repair ') ? false
-                    : undefined
-            })
-            // 0033's own gate never ran in the fixture — its red was a leftover. Model
-            // that: 0033's verify passes on nothing, the red simply sits in the tree.
-            const inner = deps.verify!
-            deps.verify = (c, cwd, title, id) =>
-                title === title33 ? Promise.resolve({ok: true}) : inner(c, cwd, title, id)
-            deps.introducedBy = (_cwd, rel) => Promise.resolve(rel === API ? 'TASK_0033' : null)
-            await runAutoLoop(ctx, dir, 'TASK_AUTO_0002', deps)
-            const repair = `repair ${API}: \`${LINT}\` exits 1 (introduced by TASK_0033)`
-            expect(ran).toEqual([title33, repair, title34])
-            // 0034 was never blamed: no FAIL, no inherited debt, no debt at all in its name.
-            expect((await readAcceptDebts(dir)).map(d => d.taskId)).not.toContain(ids.get(title34))
-            expect(trail.some(l => l.includes(`is red at the checkpoint before step 2`))).toBe(true)
-            expect(trail.filter(l => l.startsWith('verify: FAIL'))).toEqual([])
+test('replay mx5-n TASK_0033 → TASK_0034: 0034 is never blamed; a repair for src/client/api.ts sits between them', async () => {
+    const title33 = 'Implement `src/client/api.ts` — typed `hc<AppType>` client'
+    const title34 = 'TASK_0034 — the next task after api.ts'
+    await withTmpTaskDir(async dir => {
+        const {ctx} = makeFakeCtx(dir)
+        await writeTaskFile(
+            dir,
+            autoFm('TASK_AUTO_0002'),
+            buildAutoBody('feat', '(none)', [title33, title34])
+        )
+        const {deps, ran, trail, ids} = healthRun({
+            // 0033 ships the red unfinished; the repair clears it.
+            red: title =>
+                title === title33 ? true
+                : title.startsWith('repair ') ? false
+                : undefined
         })
-    }
-)
+        // 0033's own gate never ran in the fixture — its red was a leftover. Model
+        // that: 0033's verify passes on nothing, the red simply sits in the tree.
+        const inner = deps.verify!
+        deps.verify = (c, cwd, title, id) =>
+            title === title33 ? Promise.resolve({ok: true}) : inner(c, cwd, title, id)
+        deps.introducedBy = (_cwd, rel) => Promise.resolve(rel === API ? 'TASK_0033' : null)
+        await runAutoLoop(ctx, dir, 'TASK_AUTO_0002', deps)
+        const repair = `repair ${API}: \`${LINT}\` exits 1 (introduced by TASK_0033)`
+        expect(ran).toEqual([title33, repair, title34])
+        // 0034 was never blamed: no FAIL, no inherited debt, no debt at all in its name.
+        expect((await readAcceptDebts(dir)).map(d => d.taskId)).not.toContain(ids.get(title34))
+        expect(trail.some(l => l.includes(`is red at the checkpoint before step 2`))).toBe(true)
+        expect(trail.filter(l => l.startsWith('verify: FAIL'))).toEqual([])
+    })
+})
