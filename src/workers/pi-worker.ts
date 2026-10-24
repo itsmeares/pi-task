@@ -32,14 +32,23 @@ import {
 const RENDER_PROMPT_MAX = 120
 
 /**
- * What the caller can read back after the fact. `exitCode`, `modelError` and
- * `stderr` describe the FINAL attempt only; a discarded attempt's own cause
- * lives in its restart record (issue #19).
+ * What the caller can read back after the fact. `exitCode`, `modelError`,
+ * `stderr`, `waitMs` and `workMs` describe the FINAL attempt only; a discarded
+ * attempt's own cause and clock live in its restart record (issue #19).
  */
 interface WorkerDetails {
     exitCode: number
     attempts: number
-    restarts: Array<{reason: string; detail?: string}>
+    waitMs: number
+    workMs: number
+    totalWallMs: number
+    restarts: Array<{
+        reason: string
+        wallMs: number
+        waitMs: number
+        workMs: number
+        detail?: string
+    }>
     modelError?: string
     stderr?: string
 }
@@ -50,8 +59,14 @@ function workerDetails(r: RunWorkerResult): WorkerDetails {
     return {
         exitCode: r.exitCode,
         attempts: r.attempts,
+        waitMs: r.waitMs,
+        workMs: r.workMs,
+        totalWallMs: r.totalWallMs,
         restarts: r.restarts.map(x => ({
             reason: x.reason,
+            wallMs: x.wallMs,
+            waitMs: x.waitMs,
+            workMs: x.workMs,
             ...(x.detail !== undefined ? {detail: x.detail} : {})
         })),
         ...(r.modelError !== undefined ? {modelError: r.modelError} : {}),

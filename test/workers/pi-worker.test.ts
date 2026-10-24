@@ -26,12 +26,24 @@ interface RegisteredTool {
 interface Details {
     exitCode: number
     attempts: number
-    restarts: Array<{reason: string; detail?: string}>
+    waitMs: number
+    workMs: number
+    totalWallMs: number
+    restarts: Array<{
+        reason: string
+        wallMs: number
+        waitMs: number
+        workMs: number
+        detail?: string
+    }>
     modelError?: string
     stderr?: string
 }
 
-async function runTool(responses: SpawnResponse[]): Promise<{text: string; details: Details}> {
+async function runTool(
+    responses: SpawnResponse[],
+    signal?: AbortSignal
+): Promise<{text: string; details: Details}> {
     const registered: RegisteredTool[] = []
     const api = {registerTool: (t: RegisteredTool) => registered.push(t)}
     const internals: PiWorkerInternals = {
@@ -39,7 +51,7 @@ async function runTool(responses: SpawnResponse[]): Promise<{text: string; detai
         sleepFor: () => Promise.resolve()
     }
     registerPiWorker(api as unknown as Parameters<typeof registerPiWorker>[0], internals)
-    const r = await registered[0].execute('id', {prompt: 'q'}, undefined, undefined, {cwd: '/tmp'})
+    const r = await registered[0].execute('id', {prompt: 'q'}, signal, undefined, {cwd: '/tmp'})
     return {text: (r.content[0] as {text: string}).text, details: r.details as Details}
 }
 
@@ -120,4 +132,35 @@ test('a child that never wrote a byte is named as dead, not "(no output)"', asyn
     expect(r.text).not.toBe('(no output)')
     expect(r.text).toContain('never wrote')
     expect(r.text).toContain('unknown model "nope"')
+})
+
+test('issue #31: the wait/work split runWorker measures reaches details', async () => {
+    const r = await runTool([{...agentEndResponse('ANSWER'), closeDelayMs: 20}])
+    expect(r.details.workMs).toBeGreaterThan(0)
+    expect(r.details.waitMs).toBeGreaterThanOrEqual(0)
+    expect(r.details.totalWallMs).toBeGreaterThanOrEqual(r.details.waitMs + r.details.workMs)
+})
+
+test('issue #31: a discarded attempt keeps its own clock in details', async () => {
+    const r = await runTool([agentErrorResponse('Connection error.'), agentEndResponse('ANSWER')])
+    expect(r.details.restarts[0]).toMatchObject({
+        wallMs: expect.any(Number),
+        waitMs: expect.any(Number),
+        workMs: expect.any(Number)
+    })
+})
+
+// Issue #31 claimed a cancel and an unclassified death print the same sentence.
+// They do not: `aborted` is reached only through the caller's signal.
+test('a cancel and a crash with the same exit code say different things', async () => {
+    const ctrl = new AbortController()
+    const running = runTool(
+        [{...agentEndResponse('partial'), exitCode: 143, closeDelayMs: 50}],
+        ctrl.signal
+    )
+    queueMicrotask(() => ctrl.abort())
+    const cancelled = await running
+    const crashed = await runTool([{...agentEndResponse('partial'), exitCode: 143}])
+    expect(cancelled.text).toBe('Worker aborted.')
+    expect(crashed.text).toContain('Worker exited 143')
 })
